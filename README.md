@@ -8,7 +8,14 @@
 
 ## Resources
 
+### Code
+
 * [Nu_LB_NUC140](https://github.com/poyu39/Nu_LB_NUC140)
 * [BONK-game-NUC140](https://github.com/hoangdesu/BONK-game-NUC140)
 * [nuc140_code](https://github.com/rayee-github/nuc140_code)
 * [Nuc140-SD_Audio](https://github.com/vuongductuanktmt/Nuc140-SD_Audio)
+
+### Tutorial
+
+* [Creating New Project from Scratch - Nuvoton NU-LB-NUC140 Board](https://www.youtube.com/watch?v=OubVJVUpvIk)
+* [Nuvoton NUC140 Initial Setup tutorial](https://www.youtube.com/watch?v=c-3kSXNbJ78)
