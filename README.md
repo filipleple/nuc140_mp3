@@ -6,6 +6,9 @@
 * [Keil uVision v5](https://www.keil.com/demo/eval/arm.htm)
 * [SDK/BSP](https://drive.google.com/file/d/1ZAxvx0Aq6V41U7cmGF6-J-SBrkuUI4_I/view?usp=sharing)
 
+**ALTERNATIVE:**
+* [Docker-only buildsystem](https://github.com/filipleple/nuc140)
+
 ## Resources
 
 ### Meta
