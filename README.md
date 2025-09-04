@@ -24,9 +24,9 @@
 * [Creating New Project from Scratch - Nuvoton NU-LB-NUC140 Board](https://www.youtube.com/watch?v=OubVJVUpvIk)
 * [Nuvoton NUC140 Initial Setup tutorial](https://www.youtube.com/watch?v=c-3kSXNbJ78)
 
-## Flashing
+## OpenOCD
 
-### OpenOCD
+### Flashing
 
 1. Run OpenOCD via
   ```
@@ -40,6 +40,15 @@
   ```
   flash write_image erase /tmp/image.bin
   ```
+
+### Misc
+
+```
+reset init
+reset run
+reset halt
+resume
+```
 
 ## Troubleshooting
 
