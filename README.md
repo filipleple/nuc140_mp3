@@ -23,3 +23,27 @@
 
 * [Creating New Project from Scratch - Nuvoton NU-LB-NUC140 Board](https://www.youtube.com/watch?v=OubVJVUpvIk)
 * [Nuvoton NUC140 Initial Setup tutorial](https://www.youtube.com/watch?v=c-3kSXNbJ78)
+
+## Flashing
+
+### OpenOCD
+
+1. Run OpenOCD via
+  ```
+  ./openocd-init.sh
+  ```
+1. Connect to the CLI server via
+  ```
+  telnet localhost 4444
+  ```
+1. Flash image via
+  ```
+  flash write_image erase /tmp/image.bin
+  ```
+
+## Troubleshooting
+
+* Multiple build errors related to `inline` definitions:
+  - Set C standard to gnu99
+* Missing compiler:
+  - Choose ARM v6 for project
