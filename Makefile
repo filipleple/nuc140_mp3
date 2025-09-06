@@ -35,12 +35,12 @@ ASMS := \
 
 # -------- Includes --------
 INCLUDES := \
-  -ILibrary/ff8/src \
-  -ILibrary/CMSIS/Include \
-  -ILibrary/Device/Nuvoton/NUC1xx/Include \
-  -ILibrary/Device/Nuvoton/NUC1xx/Source \
-  -ILibrary/NUC1xx/Include \
-  -ILibrary/NUC1xx-LB_002/Include \
+  -isystem Library/ff8/src \
+  -isystem Library/CMSIS/Include \
+  -isystem Library/Device/Nuvoton/NUC1xx/Include \
+  -isystem Library/Device/Nuvoton/NUC1xx/Source \
+  -isystem Library/NUC1xx/Include \
+  -isystem Library/NUC1xx-LB_002/Include \
   -Isrc/nuc140_music_player/ \
   -Isrc/nuc140_music_player/include 
 
@@ -61,6 +61,10 @@ COBJS := $(SRCS:%=$(BUILD)/%.o)
 AOBJS := $(ASMS:%=$(BUILD)/%.o)
 OBJS  := $(COBJS) $(AOBJS)
 DEPS  := $(OBJS:.o=.d)
+
+# silence warnings just for BSP objects, also drop -Werror for them
+BSP_OBJS := $(filter $(BUILD)/Library/%,$(OBJS))
+$(BSP_OBJS): CFLAGS := $(filter-out -Werror,$(CFLAGS)) -w
 
 ifneq ($(strip $(ADPCM_LIB)),)
   LIBS += $(ADPCM_LIB)
