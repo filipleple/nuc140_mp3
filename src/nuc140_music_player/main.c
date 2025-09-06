@@ -13,17 +13,6 @@
  *  - WAU8822 volume expressed as UI percent, mapped to safe raw range
  */
 
-#include <stdio.h>
-#include "UART.h"
-#include "GPIO.h"
-#include "I2C.h"
-#include "I2S.h"
-#include "SYS.h"
-#include "diskio.h"
-#include "ff.h"
-#include <Audio.h>
-#include "LCD.h"
-#include "Scankey.h"
 #include "include/player.h"
 
 /* ===== Entry point ===== */
