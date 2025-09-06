@@ -14,9 +14,6 @@ void init_codec_i2s(void)
     DrvI2C_Open(I2C_PORT0, 100000);
     DrvI2C_EnableInt(I2C_PORT0);
 
-    /* Configure codec */
-    wau8822_setup();
-
     /* I2S setup */
     S_DRVI2S_DATA_T st;
     st.u32SampleRate      = 8000;
@@ -31,6 +28,9 @@ void init_codec_i2s(void)
     DrvGPIO_InitFunction(E_FUNC_I2S);
     DrvI2S_SetMCLKFreq(12000000);
     DrvI2S_EnableMCLK();
+
+    /* Configure codec */
+    wau8822_setup();
 }
 
 /* ===== I2S ISR (Tx threshold) ===== */

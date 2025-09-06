@@ -64,26 +64,35 @@ void wau8822_setup(void)
     rough_delay(0x200);
 
     i2c_write_wau8822(1,  0x02F);
-    i2c_write_wau8822(2,  0x1B3); /* HP, ADC mix/boost, ADC */
-    i2c_write_wau8822(3,  0x07F); /* main mixer, DAC */
-    i2c_write_wau8822(4,  0x010); /* 16-bit, I2S, stereo */
-    i2c_write_wau8822(5,  0x000); /* no companding/loopback */
-    i2c_write_wau8822(6,  0x1ED); /* 8 kHz */
-    i2c_write_wau8822(7,  0x00A); /* 8 kHz coeffs */
-    i2c_write_wau8822(10, 0x008); /* DAC softmute off, 128x */
-    i2c_write_wau8822(14, 0x108); /* ADC HPF off, 128x */
-    i2c_write_wau8822(15, 0x1EF); /* ADC L vol */
-    i2c_write_wau8822(16, 0x1EF); /* ADC R vol */
+    /* Enable L/R headphone path + ADCs; your 0x1B3 was already OK */
+    i2c_write_wau8822(2,  0x1B3);
+    /* Enable LDAC/RDAC + LMIX/RMIX, biasgen; DISABLE LSPK/RSPK here */
+    i2c_write_wau8822(3,  0x01F);   /* was 0x07F which turned on speakers */
+    /* I2S: 16-bit, I2S, and MONO=1 so left goes to both L/R */
+    i2c_write_wau8822(4,  0x011);   /* was 0x010; bit0 MONO=1 */
+    i2c_write_wau8822(5,  0x000);
+    i2c_write_wau8822(6,  0x1ED);
+    i2c_write_wau8822(7,  0x00A);
+    i2c_write_wau8822(10, 0x008);
+    i2c_write_wau8822(14, 0x108);
+    i2c_write_wau8822(15, 0x1EF);
+    i2c_write_wau8822(16, 0x1EF);
     i2c_write_wau8822(43, 0x010);
     i2c_write_wau8822(44, 0x000);
     i2c_write_wau8822(45, 0x150);
     i2c_write_wau8822(46, 0x150);
     i2c_write_wau8822(47, 0x007);
     i2c_write_wau8822(48, 0x007);
-    i2c_write_wau8822(49, 0x047);
-    i2c_write_wau8822(50, 0x001); /* DAC -> LMIX */
-    i2c_write_wau8822(51, 0x000); /* DAC -> RMIX */
-
+    /* Output control: clear SPKBST; keep outputs normal impedance */
+    i2c_write_wau8822(49, 0x003);   /* was 0x047 enabling speaker boost */
+    /* Route DACs to LMIX/RMIX for headphones on LHP/RHP */
+    i2c_write_wau8822(50, 0x001);   /* LDAC -> LMIX */
+    i2c_write_wau8822(51, 0x001);   /* RDAC -> RMIX (was 0x000) */
+    /* Headphone volumes: set start value; speaker volumes muted */
+    i2c_write_wau8822(52, 0x139);   /* LHP Volume (VU set, comfy gain) */
+    i2c_write_wau8822(53, 0x139);   /* RHP Volume */
+    i2c_write_wau8822(54, 0x180);   /* LSPK mute (VU|MUTE) */
+    i2c_write_wau8822(55, 0x180);   /* RSPK mute (VU|MUTE) */
     codec_apply_vol_pct(g_vol_pct); /* ensures VU bit write and UI mapping */
 
     DrvGPIO_Open(E_GPE, 14, E_IO_OUTPUT);
@@ -95,8 +104,10 @@ inline void codec_apply_vol_pct(uint8_t pct)
     uint16_t raw = vol_pct_to_raw(pct);
     g_vol_pct = pct;
     g_vol_raw_cached = (uint16_t)(raw | VOL_VU_BIT);
-    i2c_write_wau8822(54, g_vol_raw_cached); /* LSPKOUT */
-    i2c_write_wau8822(55, g_vol_raw_cached); /* RSPKOUT */
+
+    /* Headphone volumes */
+    i2c_write_wau8822(52, g_vol_raw_cached);  /* LHP */
+    i2c_write_wau8822(53, g_vol_raw_cached);  /* RHP */
 }
 
 inline void volume_change_pct(int delta_pct)
