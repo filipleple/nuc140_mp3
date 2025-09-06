@@ -40,7 +40,8 @@ the `CON3` header. Plug in the card, press Play, enjoy.
 
 ## Quickstart
 
-Clone the repo, build the Docker toolchain, build the firmware, flash with OpenOCD, copy WAVs to the SD card, press Play.
+Clone the repo, build the Docker toolchain, build the firmware, flash with
+OpenOCD, copy WAVs to the SD card, press Play.
 
 ```sh
 # 1) Build the toolchain image
@@ -59,7 +60,8 @@ reset run
 exit
 ````
 
-SD card prep: format as FAT32, drop your `.WAV` files in the root directory, use 8.3 names like `TRACK01.WAV`, insert the card before boot.
+SD card prep: format as FAT32, drop your `.WAV` files in the root directory,
+use 8.3 names like `TRACK01.WAV`, insert the card before boot.
 
 ## Controls
 
@@ -86,9 +88,12 @@ Key scanning is debounced so each press registers exactly once.
 
 ## Troubleshooting
 
-No audio: verify `CON3` speaker wiring, WAU8822 I²C writes, and that files are IMA ADPCM.
-Glitches: use FAT32, keep filenames short, and prefer 8 kHz sources.
-Nothing listed: ensure `.WAV` extension and that files are in the SD card root.
+* No audio: verify `CON3` speaker wiring, WAU8822 I²C writes, and that files
+  are IMA ADPCM.
+* Glitches: use FAT32, keep filenames short, and prefer 8 kHz sources. Remember
+  that the audio **MUST BE MONO!**
+* Nothing listed: ensure `.WAV` extension and that files are in the SD card
+  root.
 
 ## Resources
 
