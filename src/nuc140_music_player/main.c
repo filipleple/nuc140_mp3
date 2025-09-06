@@ -6,7 +6,6 @@
  * LCD: track name (row 0), progress bar (row 1), state/volume (row 2/3)
  *
  * Notes
- *  - Consistent style, dead code removed, single-responsibility helpers
  *  - Robust header parse for RIFF/WAVE with expected 'fmt'+'fact'+'data'
  *  - Double-buffered PCM with simple per-half refills (one ADPCM block = 256 B -> 504 samples)
  *  - Pause resumes at precise sample index

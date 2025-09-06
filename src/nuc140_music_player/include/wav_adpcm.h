@@ -18,7 +18,7 @@ extern "C" {
 /* WAV header parsed fields (AudioHeader from Nuvoton BSP) */
 extern volatile AudioHeader WavFile;
 
-int parse_and_prepare_current_file(void);                     /* uses global g_file/WavFile as w twoim kodzie */
+int parse_and_prepare_current_file(void);
 int decode_block_into(int16_t *dest);
 int prefill_from_sample(uint32_t sample_pos);
 
