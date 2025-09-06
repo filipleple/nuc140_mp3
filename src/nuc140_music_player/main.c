@@ -14,7 +14,6 @@
  */
 
 #include <stdio.h>
-#include <string.h>
 #include "UART.h"
 #include "GPIO.h"
 #include "I2C.h"
@@ -23,19 +22,9 @@
 #include "diskio.h"
 #include "ff.h"
 #include <Audio.h>
-#include "adpcm4bit.h"
 #include "LCD.h"
 #include "Scankey.h"
-
-#include "include/audio_hw.h"
-#include "include/codec_wau8822.h"
-#include "include/keys.h"
 #include "include/player.h"
-#include "include/playlist.h"
-#include "include/ui.h"
-#include "include/utils.h"
-#include "include/wav_adpcm.h"
-#include "include/player_state.h"
 
 /* ===== Entry point ===== */
 int32_t main(void)
@@ -46,13 +35,6 @@ int32_t main(void)
     DrvSYS_Open(50000000);
     LOCKREG();
 
-    /* initialize externs */
-    g_vol_pct = 50;             /* 0..100 */
-    g_track_idx   = -1;         /* current index in g_tracks */
-    g_track_count = 0;
-
-    play_state_t g_state = STATE_STOPPED;
-    
     sParam.u32BaudRate       = 115200;
     sParam.u8cDataBits       = DRVUART_DATABITS_8;
     sParam.u8cStopBits       = DRVUART_STOPBITS_1;
