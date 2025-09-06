@@ -9,8 +9,8 @@ extern "C" {
 #endif
 
 void init_codec_i2s(void);
-void Tx_thresholdCallbackfn0(uint32_t status);
-void Tx_thresholdCallbackfn1(uint32_t status);
+void Tx_thresholdCallbackfn0();
+void Tx_thresholdCallbackfn1();
 
 #ifdef __cplusplus
 }

@@ -34,7 +34,7 @@ void init_codec_i2s(void)
 }
 
 /* ===== I2S ISR (Tx threshold) ===== */
-void Tx_thresholdCallbackfn0(uint32_t status)
+void Tx_thresholdCallbackfn0()
 {
     /* feed up to 4 samples per interrupt from PCM0 */
     for (uint32_t i = 0; i < 4; i++) {
@@ -52,7 +52,7 @@ void Tx_thresholdCallbackfn0(uint32_t status)
     }
 }
 
-void Tx_thresholdCallbackfn1(uint32_t status)
+void Tx_thresholdCallbackfn1()
 {
     /* feed up to 4 samples per interrupt from PCM1 */
     for (uint32_t i = 0; i < 4; i++) {

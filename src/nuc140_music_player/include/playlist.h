@@ -16,7 +16,7 @@ extern volatile int32_t  g_track_idx;         /* current index in g_tracks */
 extern volatile uint32_t g_track_count;
 
 /* File handle for the current track */
-extern volatile FIL g_file;
+extern FIL g_file;
 
 void rebuild_playlist(void);
 int  open_track_by_index(int32_t idx);
