@@ -611,6 +611,25 @@ static void resume_playback(void)
     print_Line(2, "Playing   ");
 }
 
+
+static void lcd_print_track_name(void)
+{
+    if (g_track_count == 0 || g_track_idx < 0) {
+        print_Line(0, "No WAVs        ");
+        return;
+    }
+    char name[13];
+    strncpy(name, g_tracks[g_track_idx], 12);
+    name[12] = '\0';
+    char *dot = strrchr(name, '.');
+    if (dot) *dot = '\0';
+
+    char line[17];
+    /* “01 ” + up to 13 chars of name = 16 columns total */
+    snprintf(line, sizeof line, "%02u %-13.13s", (unsigned)(g_track_idx + 1), name);
+    print_Line(0, line);
+}
+
 static void start_playback(void)
 {
     if (g_track_count == 0) {
@@ -635,6 +654,7 @@ static void start_playback(void)
     /* reset stream pointers and init codec/I2S for this file’s rate */
     u32PCMBuffPointer = u32PCMBuffPointer1 = 0;
     InitWAU8822();
+    lcd_print_track_name();              /* show current track on LCD line 0 */
     /* Re-apply UI volume in case codec reset altered it */
     codec_apply_vol_pct(g_vol_pct);
     
@@ -642,12 +662,7 @@ static void start_playback(void)
     DrvI2S_EnableTx();
 
     g_state = STATE_PLAYING;
-
-    char line[16] = "Playing:       ";
-    /* optional: show track number 00..31 */
-    line[9] = '0' + (g_track_idx / 10);
-    line[10] = '0' + (g_track_idx % 10);
-    print_Line(2, line);
+    print_Line(2, "Playing        ");
 }
 
 /* ===== playlist build: root directory, .WAV ADPCM (fmt=0x11) only ===== */
@@ -784,13 +799,13 @@ int32_t UAC_MainProcess(void)
 
     rebuild_playlist();
     if (g_track_count == 0) {
-        print_Line(2, "No WAVs   ");
+        lcd_print_track_name();          /* prints “No WAVs        ” on line 0 */
+        print_Line(2, "Stopped        ");
     } else {
         g_track_idx = 0;
         start_playback();
     }
 
-    print_Line(0, "ADSM PLAYER");
     print_Line(1, "16bit Mono 8KHz");
 
     while (1)
