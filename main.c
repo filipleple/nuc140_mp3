@@ -21,17 +21,23 @@ volatile play_state_t g_state = STATE_STOPPED;
 #define KEY_PLAY_PAUSE  5
 #define KEY_NEXT        6
 #define KEY_VOLUME_DOWN 8
-
-/* ==== add globals near other globals ==== */
 #define ADPCM_BLOCK_BYTES    256
 #define ADPCM_BLOCK_SAMPLES  504
+
+#define LCD_COLS 16
+
+/* redraw throttling for the bar */
+static uint8_t g_last_bar_chars = 0xFF;
+
+/* optional: if u32DataSize is changed in ISRs, make it volatile */
+volatile uint32_t u32DataSize;
+
+static void ui_progress_reset(void) { g_last_bar_chars = 0xFF; }
 
 static uint32_t g_data_start = 0;        /* byte offset of ADPCM data */
 static uint32_t g_resume_samples = 0;    /* absolute sample index to resume from */
 
 volatile uint8_t g_tx_half = 0; /* 0 = i16PCMBuff, 1 = i16PCMBuff1 */
-
-uint32_t u32DataSize;
 
 const int8_t i8WavHeader[]=
 {0x52,0x49,0x46,0x46,0x34,0xA1,0x00,0x00,0x57,0x41,0x56,0x45,0x66,0x6D,0x74,0x20
@@ -77,6 +83,8 @@ void Tx_thresholdCallbackfn1(uint32_t status);
 void Tx_thresholdCallbackfn0(uint32_t status);
 void Rx_thresholdCallbackfn1(uint32_t status);
 void Rx_thresholdCallbackfn0(uint32_t status);
+static void ui_update_progress_bar(void);
+
 static void RoughDelay(uint32_t t)
 {
     volatile int32_t delay;
@@ -578,6 +586,8 @@ static void stop_playback(void)
     f_close(&g_file);
     g_state = STATE_STOPPED;
     print_Line(2, "Stopped   ");
+    ui_progress_reset();
+    print_Line(1, "                ");  /* clear bar line */
 }
 
 /* ==== capture precise pause position ==== */
@@ -588,6 +598,7 @@ static void pause_playback(void)
     /* total played so far = total_samples - remaining */
     g_resume_samples = WavFile.u32SampleNumber - u32DataSize;
     g_state = STATE_PAUSED;
+    ui_update_progress_bar();
     print_Line(2, "Paused    ");
 }
 
@@ -663,6 +674,8 @@ static void start_playback_from_sample(uint32_t sample_pos)
     u32PCMBuffPointer = u32PCMBuffPointer1 = 0;
     InitWAU8822();
     lcd_print_track_name();
+    ui_progress_reset();
+    ui_update_progress_bar();
     codec_apply_vol_pct(g_vol_pct);
 
     /* set remaining sample counter and prefill ping/pong from position */
@@ -708,6 +721,8 @@ static void start_playback(void)
     u32PCMBuffPointer = u32PCMBuffPointer1 = 0;
     InitWAU8822();
     lcd_print_track_name();              /* show current track on LCD line 0 */
+    ui_progress_reset();
+    ui_update_progress_bar();
     /* Re-apply UI volume in case codec reset altered it */
     codec_apply_vol_pct(g_vol_pct);
     
@@ -864,7 +879,8 @@ int32_t UAC_MainProcess(void)
     {
         /* keypad and UI */
         poll_keys_and_dispatch();
-
+        ui_update_progress_bar();
+        
         /* if paused or stopped, skip decode work but keep polling keys */
         if (g_state != STATE_PLAYING) {
             DrvSYS_Delay(1000);
@@ -907,6 +923,30 @@ void Delay(uint32_t delayCnt)
         __NOP();
         __NOP();
     }
+}
+
+static void ui_update_progress_bar(void)
+{
+    if (!WavFile.u32SampleNumber) return;
+
+    /* snapshot once; tiny race is fine for UI */
+    uint32_t total  = WavFile.u32SampleNumber;
+    uint32_t left   = u32DataSize;
+    uint32_t played = (left <= total) ? (total - left) : 0;
+
+    /* scale played -> 0..LCD_COLS */
+    uint8_t filled = (uint8_t)(((uint64_t)played * LCD_COLS) / total);
+    if (filled > LCD_COLS) filled = LCD_COLS;
+
+    if (filled == g_last_bar_chars) return;
+
+    char line[LCD_COLS + 1];
+    for (uint8_t i = 0; i < LCD_COLS; i++)
+        line[i] = (i < filled) ? '=' : ' ';
+    line[LCD_COLS] = '\0';
+
+    print_Line(1, line);
+    g_last_bar_chars = filled;
 }
 
 
