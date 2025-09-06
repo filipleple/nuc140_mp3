@@ -148,8 +148,6 @@ int32_t player_mainloop(void)
         start_playback();
     }
 
-    print_Line(1, "16bit Mono 8KHz");
-
     for (;;) {
         poll_keys_and_dispatch();
         ui_update_progress_bar();
