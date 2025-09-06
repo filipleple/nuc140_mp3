@@ -26,8 +26,9 @@ SRCS := \
   Library/NUC1xx/Source/I2C.c \
   Library/NUC1xx/Source/I2S.c \
   Library/NUC1xx/Source/UART.c \
-  Library/Device/Nuvoton/NUC1xx/Source/system_NUC1xx.c \
-  src/nuc140_music_player/main.c 
+  Library/Device/Nuvoton/NUC1xx/Source/system_NUC1xx.c
+
+SRCS += $(wildcard src/nuc140_music_player/*.c)
 
 ASMS := \
   Library/misc_gcc_compatibility/startup_gcc.S
@@ -40,7 +41,8 @@ INCLUDES := \
   -ILibrary/Device/Nuvoton/NUC1xx/Source \
   -ILibrary/NUC1xx/Include \
   -ILibrary/NUC1xx-LB_002/Include \
-  -Isrc/nuc140_music_player/ 
+  -Isrc/nuc140_music_player/ \
+  -Isrc/nuc140_music_player/include 
 
 # -------- Flags --------
 COMMON := -mcpu=cortex-m0 -mthumb -ffunction-sections -fdata-sections -fno-builtin -fno-common
