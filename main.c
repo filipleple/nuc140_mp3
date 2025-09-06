@@ -1,4 +1,19 @@
-
+//
+// Smpl_SDcard_ADPCM
+//
+// 8ohm speaker connected to CON3 of NU-LB-NUC140 learning board
+// adpcm.wav stored in SDcard, SDcard plug into the socket on the back of NU-LB-NUC140
+// this sample use libImaAdpcm4bit.lib to play .wav file (filename = adpcm.wav, sample rate =32K)
+//
+#include <stdio.h>
+#include <string.h>
+#include "UART.h"
+#include "GPIO.h"
+#include "I2C.h"
+#include "I2S.h"
+#include "SYS.h"
+#include "diskio.h"
+#include "ff.h"
 #include <Audio.h>
 #include "adpcm4bit.h"
 #include "LCD.h"
@@ -12,7 +27,7 @@ volatile play_state_t g_state = STATE_STOPPED;
 #define KEY_PLAY_PAUSE  5
 #define KEY_NEXT        6
 
-
+volatile uint8_t g_tx_half = 0; /* 0 = i16PCMBuff, 1 = i16PCMBuff1 */
 
 uint32_t u32DataSize;
 
@@ -247,49 +262,47 @@ static void WAU8822_Setup(void)
 /*---------------------------------------------------------------------------------------------------------*/
 void Tx_thresholdCallbackfn0(uint32_t status)
 {
-	uint32_t i;
-	int32_t i32Data;
-	
-	for	( i = 0; i < 4; i++)
-	{
-		i32Data=(i16PCMBuff[u32PCMBuffPointer++])<<16;
-		_DRVI2S_WRITE_TX_FIFO(i32Data);
-		if(--u32DataSize==0)
-		{
-			DrvI2S_DisableInt(I2S_TX_FIFO_THRESHOLD);
-			DrvI2S_DisableTx();
-			return;
-		}
-	}
-	if(u32PCMBuffPointer==i16PCMBuffSize)
-	{
-		DrvI2S_EnableInt(I2S_TX_FIFO_THRESHOLD, Tx_thresholdCallbackfn1);
-		if(u32PCMBuffPointer1!=0)
-			while(1);
-	} 
+    uint32_t i; int32_t s;
+    g_tx_half = 0;
+
+    for (i = 0; i < 4; i++) {
+        if (u32DataSize == 0) { DrvI2S_DisableInt(I2S_TX_FIFO_THRESHOLD); DrvI2S_DisableTx(); return; }
+
+        if (u32PCMBuffPointer < i16PCMBuffSize) {
+            s = ((int32_t)i16PCMBuff[u32PCMBuffPointer++]) << 16;
+            _DRVI2S_WRITE_TX_FIFO(s);
+            u32DataSize--;
+        } else {
+            /* buffer not ready yet -> output silence to avoid screech */
+            _DRVI2S_WRITE_TX_FIFO(0);
+        }
+    }
+
+    if (u32PCMBuffPointer >= i16PCMBuffSize) {
+        DrvI2S_EnableInt(I2S_TX_FIFO_THRESHOLD, Tx_thresholdCallbackfn1);
+    }
 }
+
 void Tx_thresholdCallbackfn1(uint32_t status)
 {
-	uint32_t i;
-	int32_t i32Data;
-	
-	for	( i = 0; i < 4; i++)
-	{
-		i32Data=(i16PCMBuff1[u32PCMBuffPointer1++])<<16;
-		_DRVI2S_WRITE_TX_FIFO(i32Data);
-		if(--u32DataSize==0)
-		{
-			DrvI2S_DisableInt(I2S_TX_FIFO_THRESHOLD);
-			DrvI2S_DisableTx();
-			return;
-		}
-	}
-	if(u32PCMBuffPointer1==i16PCMBuffSize)
-	{
-		DrvI2S_EnableInt(I2S_TX_FIFO_THRESHOLD, Tx_thresholdCallbackfn0);
-		if(u32PCMBuffPointer!=0)
-			while(1);		
-	}	
+    uint32_t i; int32_t s;
+    g_tx_half = 1;
+
+    for (i = 0; i < 4; i++) {
+        if (u32DataSize == 0) { DrvI2S_DisableInt(I2S_TX_FIFO_THRESHOLD); DrvI2S_DisableTx(); return; }
+
+        if (u32PCMBuffPointer1 < i16PCMBuffSize) {
+            s = ((int32_t)i16PCMBuff1[u32PCMBuffPointer1++]) << 16;
+            _DRVI2S_WRITE_TX_FIFO(s);
+            u32DataSize--;
+        } else {
+            _DRVI2S_WRITE_TX_FIFO(0);
+        }
+    }
+
+    if (u32PCMBuffPointer1 >= i16PCMBuffSize) {
+        DrvI2S_EnableInt(I2S_TX_FIFO_THRESHOLD, Tx_thresholdCallbackfn0);
+    }
 }
 
 
@@ -431,20 +444,49 @@ static int  open_track_by_index(int32_t idx);
 static int  parse_and_prepare_current_file(void);
 static void handle_end_of_track(void);
 
-/* ===== keypad polling with simple debounce ===== */
+/* ===== debounced keypad: 1 event per press ===== */
+static int8_t get_key_press(void)
+{
+    enum { STABLE_N = 5 };               /* ~5 consecutive identical scans */
+    static int8_t  last_raw = KEY_NONE;
+    static uint8_t stable_cnt = 0;
+    static uint8_t pressed_latch = 0;
+
+    int8_t raw = ScanKey();
+
+    if (raw == last_raw) {
+        if (stable_cnt < 255) stable_cnt++;
+    } else {
+        stable_cnt = 0;
+        last_raw   = raw;
+    }
+
+    if (stable_cnt < STABLE_N) return KEY_NONE;   /* not yet stable */
+
+    /* rising edge -> emit exactly one event */
+    if (!pressed_latch && raw != KEY_NONE) {
+        pressed_latch = 1;
+        return raw;
+    }
+
+    /* falling edge -> arm for next press */
+    if (pressed_latch && raw == KEY_NONE) {
+        pressed_latch = 0;
+    }
+
+    return KEY_NONE;
+}
+
 static void poll_keys_and_dispatch(void)
 {
-    static uint32_t holdoff = 0;
-    if (holdoff) { holdoff--; return; }
-
-    int8_t k = ScanKey();           /* non-zero when a key is pressed */
+    int8_t k = get_key_press();
     if (k == KEY_NONE) return;
 
     switch (k) {
     case KEY_PLAY_PAUSE:
-        if (g_state == STATE_PLAYING) pause_playback();
-        else if (g_state == STATE_PAUSED) resume_playback();
-        else if (g_state == STATE_STOPPED) start_playback();
+        if (g_state == STATE_PLAYING)      pause_playback();
+        else if (g_state == STATE_PAUSED)  resume_playback();
+        else                                start_playback();
         break;
     case KEY_NEXT:
         stop_playback();
@@ -463,7 +505,6 @@ static void poll_keys_and_dispatch(void)
     default:
         break;
     }
-    holdoff = 2000;  /* a few ms of spin-loop debounce at 50 MHz main loop */
 }
 
 /* ===== control primitives ===== */
@@ -487,9 +528,29 @@ static void pause_playback(void)
 
 static void resume_playback(void)
 {
-    /* do not reset pointers or decoder state; just restart TX IRQ */
-    DrvI2S_EnableInt(I2S_TX_FIFO_THRESHOLD, Tx_thresholdCallbackfn0);
+    /* choose ISR that matches the half with remaining data */
+    void (*cb)(uint32_t) =
+        (u32PCMBuffPointer  < i16PCMBuffSize)  ? Tx_thresholdCallbackfn0 :
+        (u32PCMBuffPointer1 < i16PCMBuffSize) ? Tx_thresholdCallbackfn1 :
+        (g_tx_half ? Tx_thresholdCallbackfn1 : Tx_thresholdCallbackfn0);
+
+    /* enable TX, prime a few samples to guarantee the threshold IRQ fires */
     DrvI2S_EnableTx();
+
+    for (int i = 0; i < 8; i++) {
+        int32_t s;
+        if (cb == Tx_thresholdCallbackfn0) {
+            if (u32PCMBuffPointer >= i16PCMBuffSize) break;
+            s = ((int32_t)i16PCMBuff[u32PCMBuffPointer++]) << 16;
+        } else {
+            if (u32PCMBuffPointer1 >= i16PCMBuffSize) break;
+            s = ((int32_t)i16PCMBuff1[u32PCMBuffPointer1++]) << 16;
+        }
+        _DRVI2S_WRITE_TX_FIFO(s);
+        if (u32DataSize) u32DataSize--;
+    }
+
+    DrvI2S_EnableInt(I2S_TX_FIFO_THRESHOLD, cb);
     g_state = STATE_PLAYING;
     print_Line(2, "Playing   ");
 }
@@ -661,7 +722,6 @@ int32_t UAC_MainProcess(void)
     res = f_mount(0, &FatFs[0]);
     if (res) { put_rc(res); printf("mount failed\n"); }
 
-    OpenKeyPad();                /* enable keypad scanning */
 
     rebuild_playlist();
     if (g_track_count == 0) {
