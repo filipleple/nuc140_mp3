@@ -11,7 +11,7 @@ the `CON3` header. Plug in the card, press Play, enjoy.
 
 <!-- Replace with a short looped clip or photo of the board -->
 <p align="center">
-  <img src="docs/demo.gif" alt="NUC140 Music Player demo" width="640">
+  <img src="docs/demo.jpeg" alt="NUC140 Music Player demo" width="640">
 </p>
 
 ## Features
