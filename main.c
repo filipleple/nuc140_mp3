@@ -22,6 +22,12 @@ volatile play_state_t g_state = STATE_STOPPED;
 #define KEY_NEXT        6
 #define KEY_VOLUME_DOWN 8
 
+/* ==== add globals near other globals ==== */
+#define ADPCM_BLOCK_BYTES    256
+#define ADPCM_BLOCK_SAMPLES  504
+
+static uint32_t g_data_start = 0;        /* byte offset of ADPCM data */
+static uint32_t g_resume_samples = 0;    /* absolute sample index to resume from */
 
 volatile uint8_t g_tx_half = 0; /* 0 = i16PCMBuff, 1 = i16PCMBuff1 */
 
@@ -574,43 +580,16 @@ static void stop_playback(void)
     print_Line(2, "Stopped   ");
 }
 
+/* ==== capture precise pause position ==== */
 static void pause_playback(void)
 {
     DrvI2S_DisableInt(I2S_TX_FIFO_THRESHOLD);
     DrvI2S_DisableTx();
+    /* total played so far = total_samples - remaining */
+    g_resume_samples = WavFile.u32SampleNumber - u32DataSize;
     g_state = STATE_PAUSED;
     print_Line(2, "Paused    ");
 }
-
-static void resume_playback(void)
-{
-    /* choose ISR that matches the half with remaining data */
-    void (*cb)(uint32_t) =
-        (u32PCMBuffPointer  < i16PCMBuffSize)  ? Tx_thresholdCallbackfn0 :
-        (u32PCMBuffPointer1 < i16PCMBuffSize) ? Tx_thresholdCallbackfn1 :
-        (g_tx_half ? Tx_thresholdCallbackfn1 : Tx_thresholdCallbackfn0);
-
-    /* enable TX, prime a few samples to guarantee the threshold IRQ fires */
-    DrvI2S_EnableTx();
-
-    for (int i = 0; i < 8; i++) {
-        int32_t s;
-        if (cb == Tx_thresholdCallbackfn0) {
-            if (u32PCMBuffPointer >= i16PCMBuffSize) break;
-            s = ((int32_t)i16PCMBuff[u32PCMBuffPointer++]) << 16;
-        } else {
-            if (u32PCMBuffPointer1 >= i16PCMBuffSize) break;
-            s = ((int32_t)i16PCMBuff1[u32PCMBuffPointer1++]) << 16;
-        }
-        _DRVI2S_WRITE_TX_FIFO(s);
-        if (u32DataSize) u32DataSize--;
-    }
-
-    DrvI2S_EnableInt(I2S_TX_FIFO_THRESHOLD, cb);
-    g_state = STATE_PLAYING;
-    print_Line(2, "Playing   ");
-}
-
 
 static void lcd_print_track_name(void)
 {
@@ -628,6 +607,80 @@ static void lcd_print_track_name(void)
     /* “01 ” + up to 13 chars of name = 16 columns total */
     snprintf(line, sizeof line, "%02u %-13.13s", (unsigned)(g_track_idx + 1), name);
     print_Line(0, line);
+}
+
+/* ==== small helper to decode exactly one ADPCM block into a PCM buffer ==== */
+static int decode_one_block_into(int16_t *dest)
+{
+    UINT br;
+    if (f_read(&g_file, u8FileBuff, ADPCM_BLOCK_BYTES, &br) != FR_OK) return 0;
+    if (br < ADPCM_BLOCK_BYTES) return 0;
+    AdpcmDec4(u8FileBuff, dest, i16PCMBuffSize);   /* produces 504 samples */
+    return 1;
+}
+
+/* ==== prefill ping/pong from an absolute sample position ==== */
+static int prefill_from_sample(uint32_t sample_pos)
+{
+    uint32_t blk = sample_pos / ADPCM_BLOCK_SAMPLES;
+    uint32_t ofs = sample_pos % ADPCM_BLOCK_SAMPLES;
+
+    if (f_lseek(&g_file, g_data_start + (DWORD)blk * ADPCM_BLOCK_BYTES) != FR_OK) return 0;
+
+    /* fill ping */
+    if (!decode_one_block_into(i16PCMBuff)) return 0;
+    u32PCMBuffPointer = ofs;                     /* start inside this block */
+
+    /* fill pong with the next block if available */
+    if (decode_one_block_into(i16PCMBuff1))
+        u32PCMBuffPointer1 = 0;
+    else
+        u32PCMBuffPointer1 = i16PCMBuffSize;     /* mark empty, main loop will refill */
+
+    g_tx_half = 0;
+    return 1;
+}
+
+
+/* ==== start from an absolute sample position using your proven start flow ==== */
+static void start_playback_from_sample(uint32_t sample_pos)
+{
+    if (g_track_count == 0) { print_Line(2, "No WAVs   "); return; }
+    if (g_track_idx < 0 || g_track_idx >= (int32_t)g_track_count) g_track_idx = 0;
+
+    /* reopen + parse exactly like start_playback() */
+    f_close(&g_file);
+    if (!open_track_by_index(g_track_idx) || !parse_and_prepare_current_file()) {
+        print_Line(2, "Open/parse ");
+        g_state = STATE_STOPPED;
+        return;
+    }
+
+    /* clamp sample_pos to range */
+    if (sample_pos > WavFile.u32SampleNumber) sample_pos = WavFile.u32SampleNumber;
+
+    /* reset stream state and reinit codec/I²S exactly like start */
+    u32PCMBuffPointer = u32PCMBuffPointer1 = 0;
+    InitWAU8822();
+    lcd_print_track_name();
+    codec_apply_vol_pct(g_vol_pct);
+
+    /* set remaining sample counter and prefill ping/pong from position */
+    u32DataSize = WavFile.u32SampleNumber - sample_pos;
+    if (!prefill_from_sample(sample_pos)) { handle_end_of_track(); return; }
+
+    /* arm TX just like start_playback() */
+    DrvI2S_EnableInt(I2S_TX_FIFO_THRESHOLD, Tx_thresholdCallbackfn0);
+    DrvI2S_EnableTx();
+
+    g_state = STATE_PLAYING;
+    print_Line(2, "Playing   ");
+}
+
+/* ==== make resume use the cold-start-at-position path ==== */
+static void resume_playback(void)
+{
+    start_playback_from_sample(g_resume_samples);
 }
 
 static void start_playback(void)
@@ -749,6 +802,8 @@ static int parse_and_prepare_current_file(void)
     u32FileBuffPointer = 0x28 + WavFile.u32Subchunk1Size;
     if (f_lseek(&g_file, u32FileBuffPointer) != FR_OK) return 0;
 
+    g_data_start = u32FileBuffPointer;       /* remember where data begins */
+
     /* optional: adapt WAU8822 + I2S for sample rate. This demo uses 8 kHz.
        If your files are all 8 kHz, nothing to change. If you mix 8 k/16 k,
        reprogram regs 6/7 and DrvI2S_Open() accordingly in InitWAU8822(). */
@@ -763,9 +818,6 @@ static void handle_end_of_track(void)
     g_track_idx = (g_track_idx + 1) % g_track_count;
     start_playback();
 }
-
-
-
 
 /*---------------------------------------------------------------------------------------------------------*/
 /*                                                                                                         */
