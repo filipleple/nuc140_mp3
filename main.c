@@ -1,10 +1,3 @@
-//
-// Smpl_SDcard_ADPCM
-//
-// 8ohm speaker connected to CON3 of NU-LB-NUC140 learning board
-// adpcm.wav stored in SDcard, SDcard plug into the socket on the back of NU-LB-NUC140
-// this sample use libImaAdpcm4bit.lib to play .wav file (filename = adpcm.wav, sample rate =32K)
-//
 #include <stdio.h>
 #include <string.h>
 #include "UART.h"
@@ -23,9 +16,12 @@ typedef enum { STATE_STOPPED=0, STATE_PLAYING=1, STATE_PAUSED=2 } play_state_t;
 volatile play_state_t g_state = STATE_STOPPED;
 
 #define KEY_NONE        0
+#define KEY_VOLUME_UP   2
 #define KEY_PREV        4
 #define KEY_PLAY_PAUSE  5
 #define KEY_NEXT        6
+#define KEY_VOLUME_DOWN 8
+
 
 volatile uint8_t g_tx_half = 0; /* 0 = i16PCMBuff, 1 = i16PCMBuff1 */
 
@@ -177,7 +173,59 @@ static void I2C_WriteWAU8822(uint8_t u8addr, uint16_t u16data)
 }
 
 
+/* Keep a shadow copy; WAU8822 has write-only style regs via I2C here */
+static volatile uint16_t g_spkvol = 0x139;   /* VU bit set + a comfy default */
+enum { VOL_VU_BIT = 0x100, VOL_MUTE_BIT = 0x080, VOL_MASK = 0x07F };
 
+#define VOL_RAW_MIN_SAFE  0x10   /* floor that’s still audible but clean */
+#define VOL_RAW_MAX_SAFE  0x3D   /* ceiling ~ old 48% of 0..0x7F */
+#define VOL_UI_STEP_PCT   4      /* UI step per keypress (percent points) */
+
+static volatile uint8_t  g_vol_pct = 50;      /* UI 0..100% */
+static volatile uint16_t g_vol_raw_cached = (VOL_VU_BIT | VOL_RAW_MIN_SAFE);
+static inline uint16_t map_pct_to_raw(uint8_t pct)
+{
+    if (pct > 100) pct = 100;
+    const uint16_t span = (VOL_RAW_MAX_SAFE - VOL_RAW_MIN_SAFE);
+    /* integer linear map: y + round(pct*span/100) */
+    uint16_t raw = VOL_RAW_MIN_SAFE + (uint16_t)((pct * (uint32_t)span + 50) / 100);
+    if (raw < VOL_RAW_MIN_SAFE) raw = VOL_RAW_MIN_SAFE;
+    if (raw > VOL_RAW_MAX_SAFE) raw = VOL_RAW_MAX_SAFE;
+    return raw & VOL_MASK;
+}
+
+static inline void codec_apply_vol_pct(uint8_t pct)
+{
+    uint16_t raw = map_pct_to_raw(pct);
+    g_vol_pct = pct;
+    g_vol_raw_cached = (raw | VOL_VU_BIT);       /* never touch mute here */
+    I2C_WriteWAU8822(54, g_vol_raw_cached);      /* L */
+    I2C_WriteWAU8822(55, g_vol_raw_cached);      /* R */
+}
+
+static inline void volume_show_ui(void)
+{
+    char line[16];
+    snprintf(line, sizeof line, "Vol:%3u%%", (unsigned)g_vol_pct);
+    print_Line(3, line);
+}
+
+static inline void volume_change_pct(int delta_pct)
+{
+    int p = (int)g_vol_pct + delta_pct;
+    if (p < 0)   p = 0;
+    if (p > 100) p = 100;
+    codec_apply_vol_pct((uint8_t)p);
+    volume_show_ui();
+}
+
+
+static inline uint8_t vol_pct_from_raw(uint16_t vraw)
+{
+    uint16_t v = vraw & VOL_MASK;
+    /* Map 0..VOL_MAX linearly to 0..100 */
+    return (uint8_t)((v * 100u) / VOL_MASK);
+}
 
 /*---------------------------------------------------------------------------------------------------------*/
 /*                                                                                                         */
@@ -236,6 +284,8 @@ static void WAU8822_Setup(void)
  
  	I2C_WriteWAU8822(54, 0x139);   /* LSPKOUT Volume */
 	I2C_WriteWAU8822(55, 0x139);   /* RSPKOUT Volume */
+  /* Apply current UI volume instead of a fixed raw */
+  codec_apply_vol_pct(g_vol_pct);
 
 	DrvGPIO_Open(E_GPE,14, E_IO_OUTPUT);	
 	DrvGPIO_ClrBit(E_GPE,14);
@@ -483,6 +533,12 @@ static void poll_keys_and_dispatch(void)
     if (k == KEY_NONE) return;
 
     switch (k) {
+    case KEY_VOLUME_UP:
+        volume_change_pct(+VOL_UI_STEP_PCT);
+        break;
+    case KEY_VOLUME_DOWN:
+        volume_change_pct(-VOL_UI_STEP_PCT);
+        break;
     case KEY_PLAY_PAUSE:
         if (g_state == STATE_PLAYING)      pause_playback();
         else if (g_state == STATE_PAUSED)  resume_playback();
@@ -579,6 +635,9 @@ static void start_playback(void)
     /* reset stream pointers and init codec/I2S for this file’s rate */
     u32PCMBuffPointer = u32PCMBuffPointer1 = 0;
     InitWAU8822();
+    /* Re-apply UI volume in case codec reset altered it */
+    codec_apply_vol_pct(g_vol_pct);
+    
     DrvI2S_EnableInt(I2S_TX_FIFO_THRESHOLD, Tx_thresholdCallbackfn0);
     DrvI2S_EnableTx();
 
@@ -731,8 +790,8 @@ int32_t UAC_MainProcess(void)
         start_playback();
     }
 
-    print_Line(0, "Smpl_ADPCM @8KHz");
-    print_Line(1, "16bits, Mono");
+    print_Line(0, "ADSM PLAYER");
+    print_Line(1, "16bit Mono 8KHz");
 
     while (1)
     {
@@ -815,8 +874,6 @@ int32_t main (void)
 
 	OpenKeyPad();	       // initialize 3x3 keypad
 
-	print_Line(0, "Smpl_ADPCM @8KHz");
-	print_Line(1, "16bits, Mono");
 	printf("\n\nNUC100 Series ADPCM!\n");
 	printf("Please insert SDcard and connect line in with J1\n");  
   UAC_MainProcess();
