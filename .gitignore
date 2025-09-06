@@ -1,0 +1,27 @@
+# Ignore build artifacts
+build/
+
+# Ignore compiled object files and binaries
+*.o
+*.elf
+*.hex
+*.bin
+*.map
+*.axf
+*.lst
+*.d
+
+# Ignore backup and temp files
+*~
+*.swp
+*.bak
+
+# Ignore log files
+*.log
+
+# Ignore dependency files (optional)
+*.dep
+
+# Ignore VSCode or CLion project files (if you ever use them)
+.vscode/
+.idea/
